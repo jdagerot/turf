@@ -1,11 +1,38 @@
 console.log("Starting...");
 
 var http = require("http"),
-parseString = require('xml2js').parseString;
-;
+xml2js = require('xml2js'),
+util = require('util'),
+htmlparser = require("htmlparser2"),
+env = require('jsdom').env;
+
+var parser = new xml2js.Parser({mergeAttrs:true});
+var parseString = parser.parseString;
 
 var url = "http://api.turfgame.com/v3/user/Kokettsmurf/Misärturfaren";
 var debug = true;
+
+
+function callAPI(url, errorCB, done) {
+  var req = http.get(url, function(res) {
+    // save the data
+    var xml = '';
+    res.on('data', function(chunk) {
+      xml += chunk;
+    });
+
+    res.on('end', function() {
+      parseString(xml, function (err, result) {
+        if(err) {errorCB(err)} else {
+          done(result);
+        }
+      });
+    });
+
+    // or you can pipe the data to a parser
+  //  res.pipe(dest);
+  });
+}
 
 function getUserObject(errorCB, done) {
   if(debug) {
@@ -14,7 +41,7 @@ function getUserObject(errorCB, done) {
      + '<user name="Misärturfaren" id="78647" rank="10" points="15744" zones="157,7317,269,24096,1100,270,30340,31912,24085,22737,24245,24098,1618" pph="69" medals="51,32,11,5" place="1408" totalpoints="15744" distance="122.775681" blocktime="10" taken="119" takenunique="53" region="Stockholm"/>'
      + '</turf>';
     parseString(xml, function (err, result) {
-      done(result.turf.user[1]["$"]);
+      done(result.turf.user);
     });
   } else {
     // Fetch XML
@@ -44,6 +71,95 @@ function getUserObject(errorCB, done) {
   }
 }
 
-getUserObject(function(){}, function(userObject){
+function parseMedalHTML(rawHtml, done) {
+
+}
+
+
+var fetchedMedals = {};
+
+getUserObject(function(err){console.log("Error:" + err)}, function(userObject){
+
   console.dir(userObject);
+
+
+  var user = userObject[1];
+  var zones = user.zones[0].split(",");
+  var medals = user.medals[0].split(",");
+
+  console.dir(medals);
+  var medalUrls = "http://turfgame.com/info_medals_iframe.php?medal=";
+  var fetchcounter = medals.length;
+  for(var idx in medals) {
+    var medalID = medals[idx];
+    env(medalUrls + medalID, function (errors, window) {
+      if(errors) {
+        console.log(errors);
+      } else {
+        console.log("mid:" + medalID);
+        var $ = require('jquery')(window);
+
+        fetchedMedals[medalID] = {
+          url : medalUrls + medalID,
+          img : $("img").attr("src"),
+          userinfo : $('#userinfo').html()
+        };
+        fetchcounter--;
+        if(fetchcounter==0) {
+          console.log("All done:");
+          console.log("fetchedMedals");
+          console.dir(fetchedMedals);
+        } else {
+          console.log(fetchcounter);
+        }
+      }
+    });
+  }
+
+
+rawHtml = '<style type="text/css">'
+ + 'body {'
+ + '	font: normal normal 100%/1.0 arial, times new roman, verdana;'
+ + '	font-size: 12px;'
+ + '	color: white;'
+ + '}'
+ + ''
+ + 'a {'
+ + '	color: white;'
+ + '	text-decoration: none;'
+ + '}'
+ + ''
+ + 'img {'
+ + '	border: solid 0px;'
+ + '}'
+ + ''
+ + '</style>'
+ + ''
+ + '	<div id="userinfo" style="width: 250px;">'
+ + ''
+ + '							<IMG SRC=/images/medals/medal2.png>'
+ + '			'
+ + ''
+ + '<p>'
+ + '		<b>Silver medal</b>'
+ + '			<p>'
+ + 'This medal is awarded to those who finished as runner-up in around of Turf.<p>'
+ + 'Holders: 49		</div>';
+
+
+
+// Find all zones:
+  // url = "http://api.turfgame.com/v3/zones/plattan/id:" + zones.join('/id:');
+  //
+  // callAPI(url, function(){}, function(zones){
+  //   console.log(util.inspect(zones, false, null))
+  //   zones = zones.turf.zone;
+  //   for(idx in zones){
+  //
+  //     console.dir(zones[idx].name + " (" + zones[idx].points_take + ")");
+  //   }
+  //
+  // })
+// END FIND ALL ZONES
+
 })
